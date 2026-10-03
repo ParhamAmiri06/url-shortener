@@ -60,13 +60,15 @@ func (h *Handler) Shorten(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
-		if _, exists := h.Store.GetByCode(newCode); !exists {
-			code = newCode
-			break
+		
+		savedCode, err := h.Store.Save(normalized, newCode)
+		if err == storage.ErrCodeCollision {
+			continue
 		}
+		
+		code = savedCode
+		break
 	}
-
-	h.Store.Save(normalized, code)
 
 	resp := ShortenResponse{
 		Code:     code,

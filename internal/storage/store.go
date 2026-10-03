@@ -1,6 +1,11 @@
 package storage
 
-import "sync"
+import (
+	"errors"
+	"sync"
+)
+
+var ErrCodeCollision = errors.New("code collision")
 
 type URLStore struct {
 	mu        sync.RWMutex
@@ -29,9 +34,20 @@ func (s *URLStore) GetByURL(url string) (string, bool) {
 	return code, ok
 }
 
-func (s *URLStore) Save(url, code string) {
+func (s *URLStore) Save(url, code string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	
+	if existingCode, ok := s.urlToCode[url]; ok {
+		return existingCode, nil
+	}
+	
+	if _, ok := s.codeToURL[code]; ok {
+		return "", ErrCodeCollision
+	}
+	
 	s.codeToURL[code] = url
 	s.urlToCode[url] = code
+	
+	return code, nil
 }
