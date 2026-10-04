@@ -2,16 +2,24 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/ParhamAmiri06/url-shortener/internal/shortener"
 	"github.com/ParhamAmiri06/url-shortener/internal/storage"
 )
 
+type Store interface {
+	GetByCode(code string) (storage.LinkData, error)
+	GetByURL(url string) (string, error)
+	Save(url, code string) (string, error)
+}
+
 type Handler struct {
-	Store   *storage.URLStore
+	Store   Store
 	BaseURL string
 }
 
@@ -38,11 +46,15 @@ func (h *Handler) Shorten(w http.ResponseWriter, r *http.Request) {
 
 	normalized, err := shortener.NormalizeURL(req.URL)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		if errors.Is(err, shortener.ErrInvalidURL) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 		return
 	}
 
-	if existingCode, ok := h.Store.GetByURL(normalized); ok {
+	if existingCode, err := h.Store.GetByURL(normalized); err == nil {
 		resp := ShortenResponse{
 			Code:     existingCode,
 			ShortURL: fmt.Sprintf("%s/%s", strings.TrimRight(h.BaseURL, "/"), existingCode),
@@ -60,12 +72,12 @@ func (h *Handler) Shorten(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
-		
+
 		savedCode, err := h.Store.Save(normalized, newCode)
 		if err == storage.ErrCodeCollision {
 			continue
 		}
-		
+
 		code = savedCode
 		break
 	}
@@ -91,11 +103,54 @@ func (h *Handler) Redirect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	longURL, ok := h.Store.GetByCode(code)
-	if !ok {
-		http.NotFound(w, r)
+	data, err := h.Store.GetByCode(code)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			http.NotFound(w, r)
+		} else {
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+		}
 		return
 	}
 
-	http.Redirect(w, r, longURL, http.StatusFound)
+	http.Redirect(w, r, data.URL, http.StatusFound)
+}
+
+func (h *Handler) GetLinkStats(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	code := strings.TrimPrefix(r.URL.Path, "/api/v1/links/")
+	if code == "" || code == r.URL.Path {
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte("Unknown code"))
+		return
+	}
+
+	data, err := h.Store.GetByCode(code)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte("Unknown code"))
+		} else {
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	type StatsResponse struct {
+		URL       string `json:"url"`
+		CreatedAt string `json:"created_at"`
+	}
+
+	resp := StatsResponse{
+		URL:       data.URL,
+		CreatedAt: data.CreatedAt.Format(time.RFC3339),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(resp)
 }

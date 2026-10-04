@@ -24,6 +24,7 @@ func main() {
 	}
 
 	http.HandleFunc("/api/shorten", handler.Shorten)
+	http.HandleFunc("/api/v1/links/", handler.GetLinkStats)
 	http.HandleFunc("/", handler.Redirect)
 
 	log.Printf("Starting server on %s", *addrFlag)

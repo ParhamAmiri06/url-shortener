@@ -3,35 +3,48 @@ package storage
 import (
 	"errors"
 	"sync"
+	"time"
 )
 
 var ErrCodeCollision = errors.New("code collision")
+var ErrNotFound = errors.New("not found")
+
+type LinkData struct {
+	URL       string
+	CreatedAt time.Time
+}
 
 type URLStore struct {
 	mu        sync.RWMutex
-	codeToURL map[string]string
+	codeToURL map[string]LinkData
 	urlToCode map[string]string
 }
 
 func NewURLStore() *URLStore {
 	return &URLStore{
-		codeToURL: make(map[string]string),
+		codeToURL: make(map[string]LinkData),
 		urlToCode: make(map[string]string),
 	}
 }
 
-func (s *URLStore) GetByCode(code string) (string, bool) {
+func (s *URLStore) GetByCode(code string) (LinkData, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	url, ok := s.codeToURL[code]
-	return url, ok
+	data, ok := s.codeToURL[code]
+	if !ok {
+		return LinkData{}, ErrNotFound
+	}
+	return data, nil
 }
 
-func (s *URLStore) GetByURL(url string) (string, bool) {
+func (s *URLStore) GetByURL(url string) (string, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	code, ok := s.urlToCode[url]
-	return code, ok
+	if !ok {
+		return "", ErrNotFound
+	}
+	return code, nil
 }
 
 func (s *URLStore) Save(url, code string) (string, error) {
@@ -46,7 +59,10 @@ func (s *URLStore) Save(url, code string) (string, error) {
 		return "", ErrCodeCollision
 	}
 	
-	s.codeToURL[code] = url
+	s.codeToURL[code] = LinkData{
+		URL:       url,
+		CreatedAt: time.Now().UTC(),
+	}
 	s.urlToCode[url] = code
 	
 	return code, nil

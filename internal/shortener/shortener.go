@@ -2,12 +2,15 @@ package shortener
 
 import (
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
 )
 
 const alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+
+var ErrInvalidURL = errors.New("invalid url")
 
 func GenerateCode() (string, error) {
 	b := make([]byte, 6)
@@ -23,15 +26,15 @@ func GenerateCode() (string, error) {
 func NormalizeURL(raw string) (string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return "", fmt.Errorf("url cannot be empty")
+		return "", fmt.Errorf("url cannot be empty: %w", ErrInvalidURL)
 	}
 	u, err := url.ParseRequestURI(raw)
 	if err != nil {
-		return "", fmt.Errorf("invalid url format")
+		return "", fmt.Errorf("invalid url format: %w", ErrInvalidURL)
 	}
 	u.Scheme = strings.ToLower(u.Scheme)
 	if u.Scheme != "http" && u.Scheme != "https" {
-		return "", fmt.Errorf("invalid scheme: must be http or https")
+		return "", fmt.Errorf("invalid scheme: must be http or https: %w", ErrInvalidURL)
 	}
 
 	hostname := strings.ToLower(u.Hostname())

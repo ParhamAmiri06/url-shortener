@@ -44,3 +44,17 @@ When a new code is generated, the handler checks the storage using `h.Store.GetB
 ### Mutex Locking Strategy
 
 We use `sync.RWMutex` because, in a URL shortener, read operations (redirecting to a link) are significantly more frequent than write operations (creating a new link). The `RWMutex` allows multiple simultaneous read locks but completely blocks both reads and writes during a write lock, ensuring thread safety while optimizing for high-read throughput.
+
+
+## Part 2
+### `Store` interface location and methods.
+
+I've defined Store interface in api package so my handlers can define what exactly do they need for a storage and how ever implements them can be used as storage, before that we had an Store attribute in Handler struct which made my api coupled to storage and would made trouble if I wanted to change it. the Store interface define 3 `methodGetByCode(code string) (storage.LinkData, error)`find URL from it's shortend code `GetByURL(url string) (string, error)`check if the url have already been shortend `Save(url, code string) (string, error)` store a new mapping 
+(all three functions could return erros ,they fullfil their duity like Save can return Collision sentinel error etc)
+
+
+### How errors become status codes and response bodies.
+translation of erros (sentinels erros) to HTTP response codes happens in api package using errors.Is we check if the specificed error is present. (the only error that has a JSON body is ErrNotFound which writes Uknowncode, ErrInvalidURL only return the code and ErrCodeCollison never get sends we stay in the for loop until it's resolved)
+
+ErrInvalidURL -> 400 Bad Request :` if errors.Is(err, shortener.ErrInvalidURL) {http.Error(w, err.Error(), http.StatusBadRequest)}`
+ErrNotFound -> 404 Not Found :  `if errors.Is(err, storage.ErrNotFound) {w.WriteHeader(http.StatusNotFound)w.Write([]byte("Unknown code"))}`

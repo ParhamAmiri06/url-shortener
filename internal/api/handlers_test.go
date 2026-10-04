@@ -11,8 +11,56 @@ import (
 	"github.com/ParhamAmiri06/url-shortener/internal/storage"
 )
 
+type fakeStore struct {
+	mu        sync.RWMutex
+	codeToURL map[string]storage.LinkData
+	urlToCode map[string]string
+}
+
+func newFakeStore() *fakeStore {
+	return &fakeStore{
+		codeToURL: make(map[string]storage.LinkData),
+		urlToCode: make(map[string]string),
+	}
+}
+
+func (s *fakeStore) GetByCode(code string) (storage.LinkData, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	data, ok := s.codeToURL[code]
+	if !ok {
+		return storage.LinkData{}, storage.ErrNotFound
+	}
+	return data, nil
+}
+
+func (s *fakeStore) GetByURL(url string) (string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	code, ok := s.urlToCode[url]
+	if !ok {
+		return "", storage.ErrNotFound
+	}
+	return code, nil
+}
+
+func (s *fakeStore) Save(url, code string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if existingCode, ok := s.urlToCode[url]; ok {
+		return existingCode, nil
+	}
+	if _, ok := s.codeToURL[code]; ok {
+		return "", storage.ErrCodeCollision
+	}
+	s.codeToURL[code] = storage.LinkData{URL: url}
+	s.urlToCode[url] = code
+	return code, nil
+}
+
+
 func TestShortenAndRedirect(t *testing.T) {
-	store := storage.NewURLStore()
+	store := newFakeStore()
 	handler := &Handler{
 		Store:   store,
 		BaseURL: "http://localhost:8080",
@@ -51,7 +99,7 @@ func TestShortenAndRedirect(t *testing.T) {
 }
 
 func TestIdempotency(t *testing.T) {
-	store := storage.NewURLStore()
+	store := newFakeStore()
 	handler := &Handler{
 		Store:   store,
 		BaseURL: "http://localhost:8080",
@@ -79,7 +127,7 @@ func TestIdempotency(t *testing.T) {
 }
 
 func TestTableBadURLAndUnknownCode(t *testing.T) {
-	store := storage.NewURLStore()
+	store := newFakeStore()
 	handler := &Handler{
 		Store:   store,
 		BaseURL: "http://localhost:8080",
@@ -123,7 +171,7 @@ func TestTableBadURLAndUnknownCode(t *testing.T) {
 }
 
 func TestConcurrentDuplicateShorten(t *testing.T) {
-	store := storage.NewURLStore()
+	store := newFakeStore()
 	handler := &Handler{
 		Store:   store,
 		BaseURL: "http://localhost:8080",
@@ -159,5 +207,49 @@ func TestConcurrentDuplicateShorten(t *testing.T) {
 		if codes[i] != firstCode {
 			t.Errorf("expected all concurrent requests to return same code %s, but got %s at index %d", firstCode, codes[i], i)
 		}
+	}
+}
+
+func TestGetLinkStats(t *testing.T) {
+	store := newFakeStore()
+	handler := &Handler{
+		Store:   store,
+		BaseURL: "http://localhost:8080",
+	}
+
+	// 1. Shorten a URL to get a code
+	reqBody, _ := json.Marshal(ShortenRequest{URL: "https://example.com/stats"})
+	req := httptest.NewRequest(http.MethodPost, "/api/shorten", bytes.NewBuffer(reqBody))
+	rec := httptest.NewRecorder()
+	handler.Shorten(rec, req)
+
+	var resp ShortenResponse
+	json.NewDecoder(rec.Body).Decode(&resp)
+
+	// 2. Test GetLinkStats for the existing code
+	reqStats := httptest.NewRequest(http.MethodGet, "/api/v1/links/"+resp.Code, nil)
+	recStats := httptest.NewRecorder()
+	handler.GetLinkStats(recStats, reqStats)
+
+	if recStats.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d", http.StatusOK, recStats.Code)
+	}
+
+	var stats map[string]string
+	json.NewDecoder(recStats.Body).Decode(&stats)
+	if stats["url"] != "https://example.com/stats" {
+		t.Errorf("expected url https://example.com/stats, got %s", stats["url"])
+	}
+	if stats["created_at"] == "" {
+		t.Errorf("expected non-empty created_at")
+	}
+
+	// 3. Test GetLinkStats for unknown code
+	reqUnknown := httptest.NewRequest(http.MethodGet, "/api/v1/links/unknown-code", nil)
+	recUnknown := httptest.NewRecorder()
+	handler.GetLinkStats(recUnknown, reqUnknown)
+
+	if recUnknown.Code != http.StatusNotFound {
+		t.Errorf("expected status %d, got %d", http.StatusNotFound, recUnknown.Code)
 	}
 }
