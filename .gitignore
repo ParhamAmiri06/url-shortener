@@ -1,1 +1,4 @@
 .idea/
+.env
+api.test.exe
+cpu.prof
