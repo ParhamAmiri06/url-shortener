@@ -4,6 +4,7 @@ import (
 	"flag"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/ParhamAmiri06/url-shortener/internal/api"
 	"github.com/ParhamAmiri06/url-shortener/internal/storage"
@@ -23,13 +24,22 @@ func main() {
 		BaseURL: *baseFlag,
 	}
 
-	http.HandleFunc("/api/shorten", handler.Shorten)
-	http.HandleFunc("/api/v1/links/", handler.GetLinkStats)
-	http.HandleFunc("/", handler.Redirect)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/shorten", handler.Shorten)
+	mux.HandleFunc("/api/v1/links/", handler.GetLinkStats)
+	mux.HandleFunc("/", handler.Redirect)
+
+	srv := &http.Server{
+		Addr:         *addrFlag,
+		Handler:      mux,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 3 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
 
 	log.Printf("Starting server on %s", *addrFlag)
 	log.Printf("Base URL is %s", *baseFlag)
-	if err := http.ListenAndServe(*addrFlag, nil); err != nil {
+	if err := srv.ListenAndServe(); err != nil {
 		log.Fatal(err)
 	}
 }
