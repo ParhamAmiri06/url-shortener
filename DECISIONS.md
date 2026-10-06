@@ -58,3 +58,17 @@ translation of erros (sentinels erros) to HTTP response codes happens in api pac
 
 ErrInvalidURL -> 400 Bad Request :` if errors.Is(err, shortener.ErrInvalidURL) {http.Error(w, err.Error(), http.StatusBadRequest)}`
 ErrNotFound -> 404 Not Found :  `if errors.Is(err, storage.ErrNotFound) {w.WriteHeader(http.StatusNotFound)w.Write([]byte("Unknown code"))}`
+
+## Part 3
+### Locking choice
+As I've explained in Part 1 my locking choice were to use RWMutex because of reading happens more frequently than writing to the map(shortrening a new URL) so I didn't need to chaing anythin in this part
+
+### Timeout values and expected slow-client behavior
+URL shorteners handle tiny payloads, requiring strict limits to maintain high throughput and protect server resources.
+read timeout is 5s for receiving the user's request so we drop too slow connections and attacks fast
+write timeout is 3s for doing the map lookup or save and sending the redirect back to them (maybe when I change to DataBase I have to increase it) I keep write low because memory is instant so if it takes longer your app is frozen
+idle timeout is 60s for keeping the connection open in case the user sends another request right away 
+
+
+### Eviction cap 
+I didn't implement this optional part because I didn't find it rational. To do it right, we'd need to balance data age, usage frequency, and the last time it was accessed. We could just delete the least-used item, but finding it in the map takes O(n), which is really inefficient just to insert a new link. We could delete a batch of the least-used items in O(N log K) time, but that still adds overhead. Another option is a hash map with a doubly linked list to move recently used items to the head. However, since we use an RWMutex, this makes our locking strategy pointless—every time we read a URL, we'd need a write lock to update the list, making it very slow. All that said, the correct way is to write the data to the hard disk, not delete client data.

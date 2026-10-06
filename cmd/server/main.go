@@ -32,9 +32,9 @@ func main() {
 	srv := &http.Server{
 		Addr:         *addrFlag,
 		Handler:      mux,
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 10 * time.Second,
-		IdleTimeout:  120 * time.Second,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 3 * time.Second,
+		IdleTimeout:  60 * time.Second,
 	}
 
 	log.Printf("Starting server on %s", *addrFlag)

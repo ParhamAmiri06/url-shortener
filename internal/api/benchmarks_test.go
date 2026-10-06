@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -17,9 +18,11 @@ func BenchmarkShorten(b *testing.B) {
 
 	reqBody, _ := json.Marshal(ShortenRequest{URL: "https://example.com/bench"})
 
+	req := httptest.NewRequest(http.MethodPost, "/api/shorten", nil)
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		req := httptest.NewRequest(http.MethodPost, "/api/shorten", bytes.NewReader(reqBody))
+		req.Body = io.NopCloser(bytes.NewReader(reqBody))
 		rec := httptest.NewRecorder()
 		handler.Shorten(rec, req)
 	}
@@ -41,9 +44,10 @@ func BenchmarkRedirect(b *testing.B) {
 	json.NewDecoder(rec.Body).Decode(&resp)
 	code := resp.Code
 
+	req = httptest.NewRequest(http.MethodGet, "/"+code, nil)
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		req := httptest.NewRequest(http.MethodGet, "/"+code, nil)
 		rec := httptest.NewRecorder()
 		handler.Redirect(rec, req)
 	}
