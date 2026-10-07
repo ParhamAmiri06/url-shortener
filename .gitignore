@@ -2,3 +2,4 @@
 .env
 api.test.exe
 cpu.prof
+coverage.out

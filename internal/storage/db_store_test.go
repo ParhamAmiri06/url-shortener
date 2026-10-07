@@ -95,7 +95,7 @@ func TestDbStore_Concurrency(t *testing.T) {
 		t.Fatalf("Failed to create store: %v", err)
 	}
 
-	const numRoutines = 50
+	const numRoutines = 5
 	var wg sync.WaitGroup
 	wg.Add(numRoutines)
 

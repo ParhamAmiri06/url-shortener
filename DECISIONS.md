@@ -75,5 +75,13 @@ I didn't implement this optional part because I didn't find it rational. To do i
 
 ## Part 4
 ### Storage choice
-I have used GORM + Postgres 
+I have used GORM + Postgres for my database because Postgres automatically handle concurrency which is it's advantage over file also looking up in a data base (especially when useing indexes) is much faster than looking in a file
 
+### Schema/models and migrations && How `created_at` is stored.
+I use a surrogate PK as we didn't have any unique integer (integer PK are better than strings), the urls are stored as text type of Postgres (I didn't specify one but GORM we look at the type and choose best one for it which in this case is text , we know URLs can get very long that why we use Postgre text type) , for short url I used varchar(15) I personally belive that char(6) is enough but in real productions maybe our shortened code size needs to get more space  , for create at it send the data base a timestamp time becuase when I wrote `autoCreateTime` it would converted it to UTC so now I send it timestamp type so it won't change it . I set it's time to `Asia\Tehran` before inserting it to the database (it is automatically called when `s.db.Create(&link)` is runned) 
+
+### Crash Safety and Atomicity 
+because that we used Database (postgre) instead of file our database is ACID so (A for atomicity and D fir durability) when we  call `s.db.Create(&link)` insertion of all attributes happens in a single transaction means they all get inserted or none.as for crash saifty postgres writes ahead meaning when our Save method is finished (successfully) the data is written to the hard disk the and for concurrency the data base automatically put locks on rows not on database (like what we nearly had to do with the map)
+
+### Idempotency + Persistence 
+my save method check if the url it's trying to insert is already in the data base or not (with `GetByURL()`) and if it's written it will return the written value if it exist and if doesn't it will generate a new code for it and save it , because they are beaing saved on a disk and not in a memory and our program connect's to the data base every time that it's runned the written data won't be lost

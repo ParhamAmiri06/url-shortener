@@ -14,7 +14,6 @@ import (
 	"gorm.io/gorm"
 )
 
-
 func getEnvOrDefault(key, fallback string) string {
 	if value, exists := os.LookupEnv(key); exists {
 		return value
@@ -39,11 +38,12 @@ func main() {
 			dbname := getEnvOrDefault("DB_NAME", "shortener")
 			port := getEnvOrDefault("DB_PORT", "5432")
 			sslmode := getEnvOrDefault("DB_SSLMODE", "disable")
-
-			dbDSN = fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=%s TimeZone=UTC",
+			fmt.Println("tehran")
+			dbDSN = fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=%s TimeZone=Asia/Tehran",
 				host, user, password, dbname, port, sslmode)
 		}
 
+		fmt.Println("Final dbDSN:", dbDSN)
 		db, err := gorm.Open(postgres.Open(dbDSN), &gorm.Config{})
 		if err != nil {
 			log.Fatalf("failed to connect database: %v", err)

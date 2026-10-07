@@ -10,8 +10,17 @@ import (
 type Link struct {
 	ID          uint      `gorm:"primaryKey"`
 	ShortCode   string    `gorm:"uniqueIndex;not null;type:varchar(15)"`
-	OriginalURL string    `gorm:"index;not null"`
-	CreatedAt   time.Time `gorm:"autoCreateTime"`
+	OriginalURL string    `gorm:"uniqueIndex;not null"`
+	CreatedAt   time.Time `gorm:"type:timestamp"`
+}
+
+func (l *Link) BeforeCreate(tx *gorm.DB) (err error) {
+	loc, err := time.LoadLocation("Asia/Tehran")
+	if err != nil {
+		return err
+	}
+	l.CreatedAt = time.Now().In(loc)
+	return nil
 }
 
 type DbStore struct {
