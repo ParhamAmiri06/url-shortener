@@ -58,7 +58,6 @@ func (s *fakeStore) Save(url, code string) (string, error) {
 	return code, nil
 }
 
-
 func TestShortenAndRedirect(t *testing.T) {
 	store := newFakeStore()
 	handler := &Handler{

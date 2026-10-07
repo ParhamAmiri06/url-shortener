@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"log"
 	"net/http"
@@ -15,10 +14,6 @@ import (
 	"gorm.io/gorm"
 )
 
-var (
-	addrFlag = flag.String("addr", ":8080", "address to listen on")
-	baseFlag = flag.String("base", "http://localhost:8080", "base URL for short links")
-)
 
 func getEnvOrDefault(key, fallback string) string {
 	if value, exists := os.LookupEnv(key); exists {
@@ -28,8 +23,6 @@ func getEnvOrDefault(key, fallback string) string {
 }
 
 func main() {
-	flag.Parse()
-
 	// Load .env file if it exists
 	if err := godotenv.Load(); err != nil {
 		log.Println("No .env file found or error loading it")
@@ -67,9 +60,11 @@ func main() {
 		store = storage.NewURLStore()
 	}
 
+	baseURL := getEnvOrDefault("BASE_URL", "http://localhost:8080")
+
 	handler := &api.Handler{
 		Store:   store,
-		BaseURL: *baseFlag,
+		BaseURL: baseURL,
 	}
 
 	mux := http.NewServeMux()
@@ -77,16 +72,19 @@ func main() {
 	mux.HandleFunc("/api/v1/links/", handler.GetLinkStats)
 	mux.HandleFunc("/", handler.Redirect)
 
+	port := getEnvOrDefault("SERVER_PORT", "8080")
+	addr := ":" + port
+
 	srv := &http.Server{
-		Addr:         *addrFlag,
+		Addr:         addr,
 		Handler:      mux,
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 3 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
 
-	log.Printf("Starting server on %s", *addrFlag)
-	log.Printf("Base URL is %s", *baseFlag)
+	log.Printf("Starting server on %s", addr)
+	log.Printf("Base URL is %s", baseURL)
 	if err := srv.ListenAndServe(); err != nil {
 		log.Fatal(err)
 	}

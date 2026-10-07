@@ -72,3 +72,8 @@ idle timeout is 60s for keeping the connection open in case the user sends anoth
 
 ### Eviction cap 
 I didn't implement this optional part because I didn't find it rational. To do it right, we'd need to balance data age, usage frequency, and the last time it was accessed. We could just delete the least-used item, but finding it in the map takes O(n), which is really inefficient just to insert a new link. We could delete a batch of the least-used items in O(N log K) time, but that still adds overhead. Another option is a hash map with a doubly linked list to move recently used items to the head. However, since we use an RWMutex, this makes our locking strategy pointless—every time we read a URL, we'd need a write lock to update the list, making it very slow. All that said, the correct way is to write the data to the hard disk, not delete client data.
+
+## Part 4
+### Storage choice
+I have used GORM + Postgres 
+
