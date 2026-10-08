@@ -118,3 +118,29 @@ func TestDbStore_Concurrency(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+func TestDbStore_EdgeCases(t *testing.T) {
+	tempDir, _ := os.MkdirTemp("", "url-shortener-db-test-edge")
+	defer os.RemoveAll(tempDir)
+
+	dbPath := filepath.Join(tempDir, "test_edge.db")
+	db, _ := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
+	store, _ := NewDbStore(db)
+
+	store.Save("https://example.com/edge1", "e1")
+
+	_, err := store.Save("https://example.com/edge2", "e1")
+	if err != ErrCodeCollision {
+		t.Errorf("Expected ErrCodeCollision, got %v", err)
+	}
+
+	_, err = store.GetByCode("unknown")
+	if err != ErrNotFound {
+		t.Errorf("Expected ErrNotFound, got %v", err)
+	}
+
+	_, err = store.GetByURL("https://unknown.com")
+	if err != ErrNotFound {
+		t.Errorf("Expected ErrNotFound, got %v", err)
+	}
+}

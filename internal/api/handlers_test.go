@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -27,6 +28,9 @@ func newFakeStore() *fakeStore {
 func (s *fakeStore) GetByCode(code string) (storage.LinkData, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	if code == "trigger-error" {
+		return storage.LinkData{}, errors.New("simulated error")
+	}
 	data, ok := s.codeToURL[code]
 	if !ok {
 		return storage.LinkData{}, storage.ErrNotFound
@@ -251,4 +255,96 @@ func TestGetLinkStats(t *testing.T) {
 	if recUnknown.Code != http.StatusNotFound {
 		t.Errorf("expected status %d, got %d", http.StatusNotFound, recUnknown.Code)
 	}
+}
+
+func TestRedirectEdgeCases(t *testing.T) {
+	store := newFakeStore()
+	handler := &Handler{
+		Store:   store,
+		BaseURL: "http://localhost:8080",
+	}
+
+	tests := []struct {
+		name       string
+		method     string
+		url        string
+		expectCode int
+	}{
+		{"Method Not Allowed", http.MethodPost, "/some-code", http.StatusMethodNotAllowed},
+		{"Empty Code", http.MethodGet, "/", http.StatusNotFound},
+		{"Internal Server Error", http.MethodGet, "/trigger-error", http.StatusInternalServerError},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(tt.method, tt.url, nil)
+			rec := httptest.NewRecorder()
+			handler.Redirect(rec, req)
+
+			if rec.Code != tt.expectCode {
+				t.Errorf("expected status %d, got %d", tt.expectCode, rec.Code)
+			}
+		})
+	}
+}
+
+func TestShortenEdgeCases(t *testing.T) {
+	store := newFakeStore()
+	handler := &Handler{
+		Store:   store,
+		BaseURL: "http://localhost:8080",
+	}
+
+	t.Run("Method Not Allowed", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/shorten", nil)
+		rec := httptest.NewRecorder()
+		handler.Shorten(rec, req)
+		if rec.Code != http.StatusMethodNotAllowed {
+			t.Errorf("expected status %d, got %d", http.StatusMethodNotAllowed, rec.Code)
+		}
+	})
+
+	t.Run("Invalid JSON", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/shorten", bytes.NewBufferString("{invalid-json}"))
+		rec := httptest.NewRecorder()
+		handler.Shorten(rec, req)
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("expected status %d, got %d", http.StatusBadRequest, rec.Code)
+		}
+	})
+}
+
+func TestGetLinkStatsEdgeCases(t *testing.T) {
+	store := newFakeStore()
+	handler := &Handler{
+		Store:   store,
+		BaseURL: "http://localhost:8080",
+	}
+
+	t.Run("Method Not Allowed", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/links/code", nil)
+		rec := httptest.NewRecorder()
+		handler.GetLinkStats(rec, req)
+		if rec.Code != http.StatusMethodNotAllowed {
+			t.Errorf("expected status %d, got %d", http.StatusMethodNotAllowed, rec.Code)
+		}
+	})
+
+	t.Run("Internal Server Error", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/links/trigger-error", nil)
+		rec := httptest.NewRecorder()
+		handler.GetLinkStats(rec, req)
+		if rec.Code != http.StatusInternalServerError {
+			t.Errorf("expected status %d, got %d", http.StatusInternalServerError, rec.Code)
+		}
+	})
+
+	t.Run("Empty Code", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/links/", nil)
+		rec := httptest.NewRecorder()
+		handler.GetLinkStats(rec, req)
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("expected status %d, got %d", http.StatusNotFound, rec.Code)
+		}
+	})
 }

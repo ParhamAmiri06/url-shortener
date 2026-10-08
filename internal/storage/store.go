@@ -50,20 +50,20 @@ func (s *URLStore) GetByURL(url string) (string, error) {
 func (s *URLStore) Save(url, code string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	if existingCode, ok := s.urlToCode[url]; ok {
 		return existingCode, nil
 	}
-	
+
 	if _, ok := s.codeToURL[code]; ok {
 		return "", ErrCodeCollision
 	}
-	
+
 	s.codeToURL[code] = LinkData{
 		URL:       url,
 		CreatedAt: time.Now().UTC(),
 	}
 	s.urlToCode[url] = code
-	
+
 	return code, nil
 }
