@@ -1,15 +1,19 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/ParhamAmiri06/url-shortener/internal/api"
 	"github.com/ParhamAmiri06/url-shortener/internal/storage"
 	"github.com/joho/godotenv"
+	"golang.org/x/time/rate"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -67,8 +71,10 @@ func main() {
 		BaseURL: baseURL,
 	}
 
+	rateLimiter := api.NewIPRateLimiter(rate.Limit(1), 1)
+
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/shorten", handler.Shorten)
+	mux.HandleFunc("/api/shorten", api.RateLimitMiddleware(rateLimiter, handler.Shorten))
 	mux.HandleFunc("/api/v1/links/", handler.GetLinkStats)
 	mux.HandleFunc("/", handler.Redirect)
 
@@ -79,13 +85,30 @@ func main() {
 		Addr:         addr,
 		Handler:      mux,
 		ReadTimeout:  3 * time.Second,
-		WriteTimeout: 6 * time.Second,
+		WriteTimeout: 5 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
 
 	log.Printf("Starting server on %s", addr)
 	log.Printf("Base URL is %s", baseURL)
-	if err := srv.ListenAndServe(); err != nil {
-		log.Fatal(err)
+
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Server failed: %v", err)
+		}
+	}()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+	<-quit
+	log.Println("Shutting down server")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Fatalf("Server forced to shutdown: %v", err)
 	}
+
+	log.Println("Server exiting gracefully")
 }

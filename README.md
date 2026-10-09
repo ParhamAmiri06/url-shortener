@@ -51,3 +51,4 @@ Benchmarking took 70 percent of CPU work while Go runtime (mostly garbage collec
 Test time was split into 1.6s for the redirect benchmark and 1.1s for the shorten benchmark
 Almost all redirect benchmark time went to the core http redirect function which took 1510ms
 The shorten benchmark bottlenecks were JSON decoding at 310ms and URL normalization at 200ms
+

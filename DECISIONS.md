@@ -65,8 +65,8 @@ As I've explained in Part 1 my locking choice were to use RWMutex because of rea
 
 ### Timeout values and expected slow-client behavior
 URL shorteners handle tiny payloads, requiring strict limits to maintain high throughput and protect server resources.
-read timeout is 5s for receiving the user's request so we drop too slow connections and attacks fast
-write timeout is 3s for doing the map lookup or save and sending the redirect back to them (maybe when I change to DataBase I have to increase it) I keep write low because memory is instant so if it takes longer your app is frozen
+read timeout is 3s for receiving the user's request so we drop too slow connections and attacks
+write timeout is 6s for doing the map lookup or save and sending the redirect back to them (maybe when I change to DataBase I have to increase it) I keep write low because memory is instant.
 idle timeout is 60s for keeping the connection open in case the user sends another request right away 
 
 
@@ -116,3 +116,24 @@ When our Go server issues a redirect, we use a `302 Found` status instead of a `
 Using a 302 allows us to tell the cache duration . The CDN will cache the redirect and serve it instantly to users.
 The TradeoffIf we introduce a feature allowing users to edit the destination of their short link, the CDN will suffer from "stale redirects." If the TTL is 1 hour and a user edits their link, global users will still be sent to the old destination for up to an hour until the CDN cache expires. We must balance protecting the database (longer TTL) with the speed of link updates (shorter TTL). 
 Analytics Tradeoff Additionally, CDN caching prevents our Go server from tracking click analytics, because the requests never reach our backend. To solve this, we would require edge-computing to count clicks.
+
+
+## Part 6
+
+### Graceful shutdown
+First, we run the HTTP server in a separate goroutine so the main thread isn't blocked. Then, we use `os/signal.Notify` to intercept OS termination signals (like `Ctrl+C` or Docker stops). Once caught, the server immediately stops accepting new requests. Finally, we call `srv.Shutdown()` with a 5-second context timeout, creating a 'drain' period that allows active, in-flight requests to finish safely before the program exits. because my writetimeout was more than 5 second I have limited it to 5 so all the requests gets drained in time and we don't get contect.DeadlineExceeded 
+
+### Rate Limiting
+I implemented a reat limiter on `/api/shorten` endpoint with `golang.org/x/time/rate` library I limited users to only make 1 requests per second (I don't want bulk uid creation) , I used double check locking in `GetLimiter` similar to to when I used it in the Save method of my in-memory URLStore to prevent overwriting existing URLs; here I used it to prevent overwriting the `*rate.Limiter` assigned to the ip . We didn't want our `Shorten` method to get called if the user has reached it limits the so we stip the user port to find it's ip and check if it has reached it's limit or not if not it can go pass throw our function and reach the real `Shorten method`
+
+
+### Domain policy
+we have to stop some urls to get shortened becuase if someone send a malicious link to get shortend (for example to and illeagal site) our URL-Shortener will get falged as malicious by browsers and ISPs to defend against it we have to way, 1 Allowlist 2 Bocklist . in the first approach we only allow the urls to get shortend that we explicitly marked this way is good for private companies. but for a public url shortener we can't add that much url to our white list instead we make a black list and when some one tries to shorten a link from the black list our server will reject it and send a `403 Forbidden` code. the list of the urls that we should to our black list is as follows: first is the illegal and malicious url's that we know we can add them to the list, and we can use a external API to check a is a url is malicious or not(like Google Safe Browsing) next we should block our own domain from getting shortend because it can make recursive redirecting , and we should add private ip's to our black list as well, although our server doesn't send requests right now so SSRF isn't our current problem but it can be in future , also if we redirect a private ip bad people might use it to trick someone's computer to attack it self (because it can bypass externall firewall), etc. 
+### What you log vs never log
+**What we never log:**
+- we do not log clients ip's as they are considered private if we want to implement something like rate limiting we can save the hashed ip
+- we do not log some HTTP headers like coockies (because they usually contains session id, and if some on access to that they just enter your account with out needing to log in ) or headers like Authorization as they contain passwords , API tokens etc.
+- we also do not want to log query parameters of the original url , they can contain sensetive data like session ID etc.
+**What we log:**
+- we should log any 5xx errors becuase the mean that our server is malfunctioning (we should also log when a error happen in connection to database (not errors like url not found although we can log them ))
+- we also should log some metadata about the incoming requests so we can calculate RPM and latency eg.(we can calculate how much it took to respond a request with logging the POST request that made to them (when generating a new url) and when it where reached the server)

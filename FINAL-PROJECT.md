@@ -283,7 +283,7 @@ No cluster required. Credit for **architecture in `DECISIONS.md`** and/or option
 |:----:|:---:|-------------|
 | [x] | 4 | `DECISIONS.md`: LB → N apps → shared store |
 | [x] | 3 | CDN / edge caching for redirects |
-| [ ] | 3 | Write-path scaling (rate limit, queue, or code pool) |
+| [x] | 3 | Write-path scaling (rate limit, queue, or code pool) |
 | [x] | 3 | Sharding / partitioning strategy |
 | [ ] | 4 | **Bonus code:** cache layer, load-test script + README numbers, etc. |
 
@@ -306,10 +306,10 @@ No cluster required. Credit for **architecture in `DECISIONS.md`** and/or option
 
 | Done | Pts | Requirement |
 |:----:|:---:|-------------|
-| [ ] | 3 | Graceful shutdown working + documented |
-| [ ] | 3 | Rate limit on create |
-| [ ] | 2 | Domain policy in `DECISIONS.md` |
-| [ ] | 2 | What you log vs never log |
+| [x] | 3 | Graceful shutdown working + documented |
+| [x] | 3 | Rate limit on create |
+| [x] | 2 | Domain policy in `DECISIONS.md` |
+| [x] | 2 | What you log vs never log |
 | [ ] | 4 | **Bonus:** pprof/metrics behind flag, or structured logging |
 
 ### Decisions you must document (Part 6)
