@@ -74,8 +74,12 @@ func (h *Handler) Shorten(w http.ResponseWriter, r *http.Request) {
 		}
 
 		savedCode, err := h.Store.Save(normalized, newCode)
-		if err == storage.ErrCodeCollision {
+		if errors.Is(err, storage.ErrCodeCollision) {
 			continue
+		}
+		if err != nil {
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
 		}
 
 		code = savedCode
