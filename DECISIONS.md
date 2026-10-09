@@ -85,3 +85,34 @@ because that we used Database (postgre) instead of file our database is ACID so 
 
 ### Idempotency + Persistence 
 my save method check if the url it's trying to insert is already in the data base or not (with `GetByURL()`) and if it's written it will return the written value if it exist and if doesn't it will generate a new code for it and save it , because they are beaing saved on a disk and not in a memory and our program connect's to the data base every time that it's runned the written data won't be lost
+
+## Part 5
+### Load Balancer
+To implement this, the first change is that users won't send requests directly to our server IPs. They will only know our Load Balancer (it works as a reverse proxy, so the users don't know about our servers' IPs, which could even be private IPs). We can mirror the route that the user is requesting on the Load Balancer and forward the exact same route to the server. The server won't see the real user IP directly, but if we want to know the user's IP for something like rate limiting, we can have the Load Balancer inject it into an HTTP header. about how the Load Balancer chooses which server a request should get sent to, we can use the Least Connections algorithm, the Load Balancer monitors how many active connections each server has and routes new traffic to the one with the least.
+The reason why we choose to use this algorithm instead of something like Round Robin is that we can use it with an Auto-Scaler . Its job is to monitor metrics like CPU usage, memory, etc. When our Auto-Scaler detects a high usage of CPU, it turns on a new server. Once the server is ready, the Auto-Scaler enrolls it in the Load Balancer. This works for low traffic as well, when the Auto-Scaler sees that our servers are consuming very few resources, it decides to turn one off and removes it from the Load Balancer (it first tells the Load Balancer not to send new connections to this server, and waits until the server finishes processing its active connections before shutting it down).
+For the database, we don't need any changes because I have used PostgreSQL. Multiple servers can connect, read, and write data to it simultaneously (they can and should do it using the same connection credentials).
+
+### Sharding Database
+For database sharding, the approach that I would use is to shard the databases based on the short URL. For example, if we have 4 databases, we can pass a short URL through a hash function (something like modulo 4) and decide which database to check; as I have used base-62 strings, we can hash them to integers first, so that is okay. Alternatively, we can just range-partition them; for example, we can say codes that start with 0 to 9 and a to e are stored in database 1, etc.
+
+With this approach, we can make the redirect process much faster because we know exactly which database to check. However, for shortening a long URL (when a user makes a POST request), it will take a longer time because we have to check if that long URL is shortened already across all shards. (We could simply stop checking and remove the constraint that each long URL should be exactly mapped to one short URL; if we do that, I would have to remove the unique constraint on the original URL in the database).
+
+If we maintain the check and it's already shortened, we return the stored code. If not, we generate a new code, check if that new code exists (handling `ErrCollision` by generating a new one until there are no collisions), and store it in the corresponding database. This approach makes redirecting faster but generating a code for a long URL slower. I think this is acceptable because redirection happens much more frequently than generating a new shortened URL, so it's okay if creation takes a bit more time.
+
+We could do something to make the generation faster, but I don't find it rational for our scale: we could have 2 separate database clusters, one sharded based on the long URL and one sharded based on the short URL. That way, we could check if the long URL exists in the database faster, but then our storage would take 2 times the space, and we would have to insert each new URL into 2 databases.
+
+### CDN and Edge Caching
+To optimize the read path (resolving short URLs to long URLs) and reduce load on our servers, we can place a Content Delivery Network (CDN) in front of our Load Balancer.
+Anycast vs Geo-DNS Routing
+When using a CDN, we must choose how users are routed to the nearest edge server:
+Anycast Routing: Multiple CDN servers globally share the exact same IP address. The internet's natural BGP routing take the user to the physically closest server based on user's network ip.
+Geo-DNS: The DNS server looks at the user's IP address, determines their geographic location, and returns the unique IP address of a specific server in that region.
+as URL shortener's primary goal is speed. Anycast uses the internet's natural physical infrastructure to route users to the closest server instantly.
+
+
+The 302 Redirect and TTL Tradeoff
+When our Go server issues a redirect, we use a `302 Found` status instead of a `301 Moved Permanently`. A 301 is cached indefinitely by browsers, meaning we permanently lose control of that link. 
+
+Using a 302 allows us to tell the cache duration . The CDN will cache the redirect and serve it instantly to users.
+The TradeoffIf we introduce a feature allowing users to edit the destination of their short link, the CDN will suffer from "stale redirects." If the TTL is 1 hour and a user edits their link, global users will still be sent to the old destination for up to an hour until the CDN cache expires. We must balance protecting the database (longer TTL) with the speed of link updates (shorter TTL). 
+Analytics Tradeoff Additionally, CDN caching prevents our Go server from tracking click analytics, because the requests never reach our backend. To solve this, we would require edge-computing to count clicks.

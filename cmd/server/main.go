@@ -78,8 +78,8 @@ func main() {
 	srv := &http.Server{
 		Addr:         addr,
 		Handler:      mux,
-		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 3 * time.Second,
+		ReadTimeout:  3 * time.Second,
+		WriteTimeout: 6 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
 
